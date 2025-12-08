@@ -1,0 +1,8 @@
+ALTER TABLE probes ADD COLUMN IF NOT EXISTS attempt INTEGER DEFAULT 1 CHECK (attempt IN (1,2));
+ALTER TABLE probes ADD COLUMN IF NOT EXISTS sni_used BOOLEAN DEFAULT FALSE;
+ALTER TABLE probes ADD COLUMN IF NOT EXISTS sni_overridden BOOLEAN DEFAULT FALSE;
+ALTER TABLE probes ADD COLUMN IF NOT EXISTS correlation_id TEXT;
+ALTER TABLE probes ADD COLUMN IF NOT EXISTS reason TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_probes_correlation ON probes(correlation_id);
+CREATE INDEX IF NOT EXISTS idx_probes_attempt ON probes(run_id, attempt);

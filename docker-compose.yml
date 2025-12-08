@@ -1,0 +1,52 @@
+services:
+  db:
+    image: postgres:15
+    container_name: hostreport_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pass}
+      POSTGRES_DB: ${POSTGRES_DB:-hostreport}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-hostreport}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}
+    image: hostheader-report:latest
+    container_name: hostreport_app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-pass}@db:5432/${POSTGRES_DB:-hostreport}
+      ARTIFACTS_DIR: /data/artifacts
+      UVICORN_PORT: 8080
+      UVICORN_HOST: 0.0.0.0
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    volumes:
+      - artifacts_data:/data/artifacts
+      # optional: statische Reports / Uploads lokal spiegeln
+      # - ./examples:/app/examples:ro
+    command: >
+      sh -c "
+        psql \"postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/$POSTGRES_DB\" -f migrations/001_init.sql &&
+        if [ -f migrations/002_sni.sql ]; then
+          psql \"postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/$POSTGRES_DB\" -f migrations/002_sni.sql;
+        fi &&
+        uvicorn backend.main:app --host 0.0.0.0 --port 8080
+      "
+
+volumes:
+  db_data:
+  artifacts_data:

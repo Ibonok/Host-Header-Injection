@@ -1,0 +1,1 @@
+ALTER TABLE runs ADD COLUMN status TEXT NOT NULL DEFAULT 'running';

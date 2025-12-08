@@ -1,0 +1,1 @@
+ALTER TABLE runs ADD COLUMN resolve_all_dns_records BOOLEAN NOT NULL DEFAULT TRUE;

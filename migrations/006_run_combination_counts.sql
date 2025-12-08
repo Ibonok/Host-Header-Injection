@@ -1,0 +1,2 @@
+ALTER TABLE runs ADD COLUMN total_combinations INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE runs ADD COLUMN processed_combinations INTEGER NOT NULL DEFAULT 0;

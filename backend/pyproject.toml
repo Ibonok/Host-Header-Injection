@@ -1,0 +1,38 @@
+[project]
+name = "hostheader-report"
+version = "0.1.0"
+description = "Host header variation ingest and reporting backend"
+authors = [{ name = "Codex Agent", email = "codex@example.com" }]
+readme = "README.md"
+requires-python = "==3.12.*"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "sqlalchemy",
+    "pydantic",
+    "pydantic-settings",
+    "python-multipart",
+    "aiohttp",
+    "python-dateutil",
+    "psycopg[binary]",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "black",
+    "uvloop",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest",
+    "pytest-asyncio",
+    "black",
+    "uvloop",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["backend*"]

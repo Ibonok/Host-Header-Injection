@@ -1,0 +1,15 @@
+server:
+  host: 0.0.0.0
+  port: 8080
+storage:
+  database_url: sqlite:///./hh_injection.db
+  artifacts_dir: artifacts
+visualisation:
+  snippet_max_bytes: 2048
+  heatmap:
+    status_palette:
+      success: "#0f9960"
+      redirect: "#2965cc"
+      client_error: "#d9822b"
+      server_error: "#db3737"
+      fallback: "#5c7080"

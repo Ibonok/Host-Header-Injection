@@ -1,0 +1,73 @@
+# .codex-config.yml — Docker/Compose-Setup
+
+project:
+  name: hostheader-report
+  description: >
+    Ingest/Analyse/Visualisierung von autorisierten Host-Header-Testdaten inkl. 421/SNI-Retry-Reporting.
+    Lokale Ausführung via Docker Compose.
+
+languages: [python, javascript]
+package_managers: [pip, npm]
+
+env:
+  required: [POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, APP_PORT, DB_PORT]
+  example:
+    POSTGRES_USER: "user"
+    POSTGRES_PASSWORD: "pass"
+    POSTGRES_DB: "hostreport"
+    APP_PORT: "8080"
+    DB_PORT: "5432"
+
+build:
+  steps:
+    - name: Build docker image
+      run: docker compose build
+
+run:
+  backend:
+    # Startet gesamten Stack (DB + App)
+    command: docker compose up
+    readiness_url: http://localhost:${APP_PORT:-8080}/docs
+
+  # Aggregationen offline anstoßen (innerhalb des App-Containers)
+  compute:
+    command: docker exec hostreport_app python analysis/compute.py ${RUN_ID}
+
+  # JSONL importieren (Multipart via curl Beispiel)
+  ingest_jsonl:
+    command: >
+      curl -sS -X POST -F "file=@examples/sample_run.jsonl"
+      http://localhost:${APP_PORT:-8080}/api/runs/${RUN_ID}/ingest/jsonl
+
+docker:
+  file: docker/Dockerfile
+  image: hostheader-report:latest
+  compose_file: docker-compose.yml
+  run:
+    env:
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
+      - POSTGRES_DB
+      - APP_PORT
+      - DB_PORT
+    ports:
+      - "${APP_PORT:-8080}:8080"
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - artifacts_data
+
+quality:
+  python:
+    format: black
+    lint: flake8
+    typecheck: mypy
+    test: pytest -q
+  node:
+    lint: "npm run lint"
+    test: "npm test --silent"
+
+review_guidelines:
+  - "Keine HTTP-Clients/Scanner hinzufügen. Reporting-only."
+  - "421/SNI: attempt/correlation_id korrekt behandeln; Aggregat '421_summary' prüfen."
+
+tasks_file: TASKS.md
