@@ -1,5 +1,7 @@
 # Host-Header Injection / Directory Enumeration
 
+The tool allows a list of FQDNs that are not publicly accessible from the Internet to be tested against a list of URLs by overriding the Host header.
+
 This repository provides a complete pipeline for analyzing host-header tests and directory-enumeration tests:
 - A FastAPI backend stores probes (HTTP responses per URL/FQDN), computes heatmap aggregates, and exposes REST endpoints.
 - A Next.js frontend (Mantine UI) visualizes runs as heatmaps, tables, and probe details (including original URLs, SNI override badges, filters, logs).
