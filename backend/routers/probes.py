@@ -41,6 +41,8 @@ def list_probes(
     host: Optional[str] = None,
     url: Optional[str] = None,
     status_code: Optional[int] = Query(None, alias="status", ge=100, le=599),
+    limit: int = Query(200, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
     session: Session = Depends(get_session),
 ) -> List[ProbeRead]:
     filters = ProbeFilters(
@@ -52,6 +54,7 @@ def list_probes(
     )
     query = select(Probe).where(Probe.run_id == run_id).order_by(Probe.target_url, Probe.tested_host_header)
     query = _apply_filters(query, filters)
+    query = query.limit(limit).offset(offset)
     rows = session.execute(query).scalars().all()
     return rows
 

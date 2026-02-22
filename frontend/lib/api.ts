@@ -1,4 +1,4 @@
-import type { HeatmapPayload, Probe, Run, RunnerLog, Summary421 } from "./types";
+import type { HeatmapPayload, Probe, Run, RunnerLog, SequenceGroupResult, SequenceRequestDef, Summary421 } from "./types";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -128,13 +128,19 @@ export type ProbeFilters = {
   status?: number;
 };
 
-export async function fetchProbes(runId: number, filters: ProbeFilters = {}): Promise<Probe[]> {
+export async function fetchProbes(
+  runId: number,
+  filters: ProbeFilters = {},
+  pagination: { limit?: number; offset?: number } = {},
+): Promise<Probe[]> {
   const params = new URLSearchParams();
   if (filters.only421) params.set("only_421", "true");
   if (filters.attempt) params.set("attempt", String(filters.attempt));
   if (filters.host) params.set("host", filters.host);
   if (filters.url) params.set("url", filters.url);
   if (filters.status) params.set("status", String(filters.status));
+  if (pagination.limit) params.set("limit", String(pagination.limit));
+  if (pagination.offset) params.set("offset", String(pagination.offset));
   const query = params.toString();
   const suffix = query ? `?${query}` : "";
   return apiFetch<Probe[]>(`/api/runs/${runId}/probes${suffix}`);
@@ -164,4 +170,24 @@ export async function fetchRawResponse(probeId: number): Promise<string> {
     throw new Error("Roh-Response konnte nicht geladen werden");
   }
   return resp.text();
+}
+
+export type SequenceGroupPayload = {
+  name: string;
+  description?: string;
+  requests: SequenceRequestDef[];
+  timeout_seconds?: number;
+  verify_ssl?: boolean;
+};
+
+export async function createSequenceGroup(payload: SequenceGroupPayload): Promise<SequenceGroupResult> {
+  return apiFetch<SequenceGroupResult>("/api/runner/sequence-group", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchSequenceResults(runId: number): Promise<SequenceGroupResult> {
+  return apiFetch<SequenceGroupResult>(`/api/runs/${runId}/sequence-results`);
 }

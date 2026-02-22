@@ -89,6 +89,9 @@ def _apply_post_schema_migrations() -> None:
         if "status_filters_json" not in run_columns:
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE runs ADD COLUMN status_filters_json TEXT"))
+        if "run_type" not in run_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE runs ADD COLUMN run_type TEXT NOT NULL DEFAULT 'standard'"))
     if "probes" in tables:
         probe_columns = {column["name"] for column in inspector.get_columns("probes")}
         if "auto_421_override" not in probe_columns:
@@ -100,4 +103,35 @@ def _apply_post_schema_migrations() -> None:
             with engine.begin() as connection:
                 connection.execute(
                     text("ALTER TABLE probes ADD COLUMN hit_ip_blacklist BOOLEAN NOT NULL DEFAULT FALSE")
+                )
+        # Performance indexes
+        with engine.begin() as connection:
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_probes_http_status ON probes(run_id, http_status)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_probes_hit_ip_blacklist ON probes(run_id, hit_ip_blacklist)"))
+    # Sequence group results table
+    if "sequence_group_results" not in tables:
+        with engine.begin() as connection:
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS sequence_group_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+                    probe_id INTEGER REFERENCES probes(id) ON DELETE SET NULL,
+                    sequence_index INTEGER NOT NULL,
+                    connection_reused BOOLEAN NOT NULL DEFAULT FALSE,
+                    dns_time_ms INTEGER,
+                    tcp_connect_time_ms INTEGER,
+                    tls_handshake_time_ms INTEGER,
+                    time_to_first_byte_ms INTEGER,
+                    total_time_ms INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_sgr_run_id ON sequence_group_results(run_id)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_sgr_probe_id ON sequence_group_results(probe_id)"))
+    if "sequence_group_results" in tables:
+        sgr_columns = {c["name"] for c in inspector.get_columns("sequence_group_results")}
+        if "request_type" not in sgr_columns:
+            with engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE sequence_group_results ADD COLUMN request_type TEXT NOT NULL DEFAULT 'injected'")
                 )

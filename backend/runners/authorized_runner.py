@@ -114,6 +114,7 @@ class AuthorizedTestRunner:
         resolve_all_dns_records: bool = True,
         auto_override_421: bool = False,
         apply_blacklist: bool = True,
+        status_filters: Optional[List[int]] = None,
     ) -> None:
         self.session = session
         self.attempt = attempt
@@ -125,6 +126,7 @@ class AuthorizedTestRunner:
         self.resolve_all_dns_records = resolve_all_dns_records
         self.auto_override_421 = auto_override_421
         self.apply_blacklist = apply_blacklist
+        self._disabled_statuses: frozenset[int] = frozenset(status_filters or [])
         self.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         self.ssl_context.check_hostname = False
         self.ssl_context.verify_mode = ssl.CERT_NONE
@@ -289,7 +291,7 @@ class AuthorizedTestRunner:
 
             payloads: List[ProbePayload] = asyncio.run(self._gather_payloads(run, batch))
 
-            dns_error_in_batch = False
+            dns_failed_hosts: set[str] = set()
 
             for payload in payloads:
                 if self._should_stop(run):
@@ -298,16 +300,21 @@ class AuthorizedTestRunner:
                     stop_requested = True
                     break
 
+                # Probes für Hosts mit DNS-Fehler überspringen
+                parsed_host = urlparse(payload.request_url).hostname or ""
+                if parsed_host in dns_failed_hosts:
+                    continue
+
                 result = self._persist_probe(run, payload, commit=False)
                 results.append(result)
 
                 if payload.error and self._is_dns_error(payload.error):
                     if self.logger:
                         self.logger(
-                            f"DNS-Fehler bei {payload.request_url}, verbleibende Hosts werden übersprungen."
+                            f"DNS-Fehler bei {payload.request_url} ({parsed_host}), "
+                            f"weitere Requests an diesen Host werden übersprungen."
                         )
-                    dns_error_in_batch = True
-                    break
+                    dns_failed_hosts.add(parsed_host)
 
             # DB-Commit für diesen 500er-Block von Probes
             try:
@@ -316,12 +323,12 @@ class AuthorizedTestRunner:
                 self.session.rollback()
                 if self.logger:
                     self.logger(f"Commit-Fehler für HTTP-Batch {batch_index}: {exc}")
-            
+
             if self.logger:
-                self.logger("Batch abgeschlossen – 3 Sekunden Pause bevor der nächste startet.")
+                self.logger("Batch abgeschlossen – 2 Sekunden Pause bevor der nächste startet.")
             time.sleep(2)
 
-            if stop_requested or dns_error_in_batch:
+            if stop_requested:
                 break
 
         return results
@@ -467,7 +474,7 @@ class AuthorizedTestRunner:
                     and error is None
                     and status_code == 421
                     and host
-                    and (current_sni or host) != host
+                    and current_sni is not None and current_sni != host
                 )
                 if should_override:
                     override_attempted = True
@@ -496,17 +503,17 @@ class AuthorizedTestRunner:
             )
 
     def _persist_probe(self, run: Run, payload: ProbePayload, *, commit: bool = True) -> RunnerCaseResult:
-        disabled_statuses = set(run.status_filters or [])
+        disabled_statuses = self._disabled_statuses
         if (
             run.sub_test_case == 2
             and payload.status_code is not None
             and payload.status_code in disabled_statuses
         ):
             # Ergebnis wird bewusst nicht persistiert, zählt aber als verarbeitet.
-            run.processed_combinations = min(
-                (run.processed_combinations or 0) + 1,
-                run.total_combinations or (run.processed_combinations or 0) + 1,
-            )
+            new_count = (run.processed_combinations or 0) + 1
+            if run.total_combinations and run.total_combinations > 0:
+                new_count = min(new_count, run.total_combinations)
+            run.processed_combinations = new_count
             if commit:
                 try:
                     self.session.commit()
@@ -554,10 +561,10 @@ class AuthorizedTestRunner:
         )
         self.session.add(probe)
 
-        run.processed_combinations = min(
-            (run.processed_combinations or 0) + 1,
-            run.total_combinations or (run.processed_combinations or 0) + 1,
-        )
+        new_count = (run.processed_combinations or 0) + 1
+        if run.total_combinations and run.total_combinations > 0:
+            new_count = min(new_count, run.total_combinations)
+        run.processed_combinations = new_count
 
         if commit:
             try:
@@ -761,7 +768,9 @@ class AuthorizedTestRunner:
         directory = value.strip()
         if not directory:
             return "/"
-        if preserve_slash and directory.startswith("/"):
+        if preserve_slash:
+            if directory.startswith("/"):
+                return directory
             return f"/{directory}"
         if directory.startswith("/"):
             return directory

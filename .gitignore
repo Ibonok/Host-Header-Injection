@@ -54,3 +54,6 @@ examples/
 ._*
 *~
 *.swp
+
+# Claude
+.claude/

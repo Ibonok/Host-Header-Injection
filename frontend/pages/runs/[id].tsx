@@ -7,9 +7,10 @@ import HeatmapPanel, { TargetSummary } from "../../components/HeatmapPanel";
 import RunnerLogsPanel from "../../components/RunnerLogsPanel";
 import ProbeDrawer from "../../components/ProbeDrawer";
 import DirectoryPathsCard from "../../components/DirectoryPathsCard";
+import SequenceGroupResultsPanel from "../../components/SequenceGroupResultsPanel";
 import { IconX } from "@tabler/icons-react";
 import { useAsyncData } from "../../lib/hooks";
-import { fetch421Summary, fetchHeatmap, fetchRun, fetchRunnerLogs } from "../../lib/api";
+import { fetch421Summary, fetchHeatmap, fetchRun, fetchRunnerLogs, fetchSequenceResults } from "../../lib/api";
 import type { HeatmapCell, HeatmapPayload } from "../../lib/types";
 import { useTranslations } from "../../lib/i18n";
 import { normalizeHeatmapPayload } from "../../lib/heatmap";
@@ -70,8 +71,21 @@ export default function RunDetailPage() {
       return fetchRunnerLogs(runId, { limit: logLimit, offset: logOffset });
     },
     [runId, logOffset],
-    { immediate: false },
+    { immediate: Boolean(runId) },
   );
+
+  const isSequenceGroup = runQuery.data?.run_type === "sequence_group";
+
+  const sequenceQuery = useAsyncData(
+    () => {
+      if (!runId || !isSequenceGroup) return Promise.resolve(null);
+      return fetchSequenceResults(runId);
+    },
+    [runId, isSequenceGroup],
+    { immediate: Boolean(runId) && isSequenceGroup },
+  );
+
+  const sequenceResult = sequenceQuery.data ?? null;
 
   const pageReady = Boolean(runQuery.data && runId);
 
@@ -199,71 +213,102 @@ export default function RunDetailPage() {
       <Stack gap="md">
         <RunBreadcrumbs current={runQuery.data?.name || ""} />
         <RunSummaryCards run={runQuery.data} summary={summaryQuery.data || null} />
-        <Tabs value={activeTab} onChange={(value) => setActiveTab(value || "heatmap")} keepMounted={false}>
-          <Tabs.List>
-            <Tabs.Tab value="heatmap">{t("runDetail.tabs.heatmap")}</Tabs.Tab>
-            {pathTabs.map((tab) => (
-              <Tabs.Tab key={tab.base} value={tab.base} leftSection={
-                <ActionIcon
-                  variant="subtle"
-                  color="gray"
-                  size="xs"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleClosePathTab(tab.base);
-                  }}
-                  aria-label={t("heatmap.paths.close")}
-                >
-                  <IconX size={14} />
-                </ActionIcon>
-              }>
-                {tab.base}
-              </Tabs.Tab>
-            ))}
-            <Tabs.Tab value="logs">{t("runDetail.tabs.logs")}</Tabs.Tab>
-          </Tabs.List>
-          <Tabs.Panel value="heatmap" pt="md">
-            <HeatmapPanel
-              payloads={payloads}
-              loading={heatmapQuery.loading}
-              selectedUrl={selectedUrl}
-              onSelectUrl={(url) => setSelectedUrl(url)}
-              onSelectCell={(cell) => setActiveCell(cell)}
-              onRefresh={() => heatmapQuery.refresh()}
-              onExpandPaths={handleExpandPaths}
-              onToggleUnique={handleToggleUnique}
-            />
-          </Tabs.Panel>
-          {pathTabs.map((tab) => (
-            <Tabs.Panel key={tab.base} value={tab.base} pt="md">
-              <DirectoryPathsCard
-                summary={tab}
-                payloads={payloads.filter((payload) => tab.paths.some((entry) => entry.url === payload.target_url))}
-                loading={heatmapQuery.loading}
-                selectedUrl={selectedUrl}
-                onSelectUrl={(url) => {
-                  setSelectedUrl(url);
-                  setActiveTab(tab.base);
-                }}
-                onSelectCell={(cell) => setActiveCell(cell)}
-                onRefresh={() => heatmapQuery.refresh()}
+        {isSequenceGroup ? (
+          <Tabs value={activeTab} onChange={(value) => setActiveTab(value || "heatmap")} keepMounted={false}>
+            <Tabs.List>
+              <Tabs.Tab value="heatmap">{t("sequenceGroup.resultTitle")}</Tabs.Tab>
+              <Tabs.Tab value="logs">{t("runDetail.tabs.logs")}</Tabs.Tab>
+            </Tabs.List>
+            <Tabs.Panel value="heatmap" pt="md">
+              <SequenceGroupResultsPanel
+                result={sequenceResult}
+                loading={sequenceQuery.loading}
+                onSelectProbe={(probeId) =>
+                  setActiveCell({ probe_id: probeId } as HeatmapCell)
+                }
               />
             </Tabs.Panel>
-          ))}
-          <Tabs.Panel value="logs" pt="md">
-            <RunnerLogsPanel
-              logs={logsQuery.data || []}
-              loading={logsQuery.loading}
-              canLoadOlder={(logsQuery.data || []).length === logLimit}
-              canLoadNewer={logOffset > 0}
-              onLoadOlder={() => setLogOffset((current) => current + logLimit)}
-              onLoadNewer={() => setLogOffset((current) => Math.max(0, current - logLimit))}
-              onJumpLatest={() => setLogOffset(0)}
-              isLatestPage={logOffset === 0}
-              onRefresh={() => logsQuery.refresh()}
-            />
-          </Tabs.Panel>
-        </Tabs>
+            <Tabs.Panel value="logs" pt="md">
+              <RunnerLogsPanel
+                logs={logsQuery.data || []}
+                loading={logsQuery.loading}
+                canLoadOlder={(logsQuery.data || []).length === logLimit}
+                canLoadNewer={logOffset > 0}
+                onLoadOlder={() => setLogOffset((current) => current + logLimit)}
+                onLoadNewer={() => setLogOffset((current) => Math.max(0, current - logLimit))}
+                onJumpLatest={() => setLogOffset(0)}
+                isLatestPage={logOffset === 0}
+                onRefresh={() => logsQuery.refresh()}
+              />
+            </Tabs.Panel>
+          </Tabs>
+        ) : (
+          <Tabs value={activeTab} onChange={(value) => setActiveTab(value || "heatmap")} keepMounted={false}>
+            <Tabs.List>
+              <Tabs.Tab value="heatmap">{t("runDetail.tabs.heatmap")}</Tabs.Tab>
+              {pathTabs.map((tab) => (
+                <Tabs.Tab key={tab.base} value={tab.base} leftSection={
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    size="xs"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleClosePathTab(tab.base);
+                    }}
+                    aria-label={t("heatmap.paths.close")}
+                  >
+                    <IconX size={14} />
+                  </ActionIcon>
+                }>
+                  {tab.base}
+                </Tabs.Tab>
+              ))}
+              <Tabs.Tab value="logs">{t("runDetail.tabs.logs")}</Tabs.Tab>
+            </Tabs.List>
+            <Tabs.Panel value="heatmap" pt="md">
+              <HeatmapPanel
+                payloads={payloads}
+                loading={heatmapQuery.loading}
+                selectedUrl={selectedUrl}
+                onSelectUrl={(url) => setSelectedUrl(url)}
+                onSelectCell={(cell) => setActiveCell(cell)}
+                onRefresh={() => heatmapQuery.refresh()}
+                onExpandPaths={handleExpandPaths}
+                onToggleUnique={handleToggleUnique}
+              />
+            </Tabs.Panel>
+            {pathTabs.map((tab) => (
+              <Tabs.Panel key={tab.base} value={tab.base} pt="md">
+                <DirectoryPathsCard
+                  summary={tab}
+                  payloads={payloads.filter((payload) => tab.paths.some((entry) => entry.url === payload.target_url))}
+                  loading={heatmapQuery.loading}
+                  selectedUrl={selectedUrl}
+                  onSelectUrl={(url) => {
+                    setSelectedUrl(url);
+                    setActiveTab(tab.base);
+                  }}
+                  onSelectCell={(cell) => setActiveCell(cell)}
+                  onRefresh={() => heatmapQuery.refresh()}
+                />
+              </Tabs.Panel>
+            ))}
+            <Tabs.Panel value="logs" pt="md">
+              <RunnerLogsPanel
+                logs={logsQuery.data || []}
+                loading={logsQuery.loading}
+                canLoadOlder={(logsQuery.data || []).length === logLimit}
+                canLoadNewer={logOffset > 0}
+                onLoadOlder={() => setLogOffset((current) => current + logLimit)}
+                onLoadNewer={() => setLogOffset((current) => Math.max(0, current - logLimit))}
+                onJumpLatest={() => setLogOffset(0)}
+                isLatestPage={logOffset === 0}
+                onRefresh={() => logsQuery.refresh()}
+              />
+            </Tabs.Panel>
+          </Tabs>
+        )}
       </Stack>
       <ProbeDrawer
         probeId={activeCell?.probe_id || null}

@@ -109,9 +109,16 @@ export default function RunsTable({ runs, loading, onRefresh }: Props) {
                   <Table.Td>{formatDate(run.created_at)}</Table.Td>
                   <Table.Td>
                     <Stack gap={2}>
-                      <Badge color={statusColor[run.status] || "gray"} variant="light">
-                        {statusLabel[run.status] || run.status}
-                      </Badge>
+                      <Group gap={4}>
+                        <Badge color={statusColor[run.status] || "gray"} variant="light">
+                          {statusLabel[run.status] || run.status}
+                        </Badge>
+                        {run.run_type === "sequence_group" && (
+                          <Badge color="indigo" variant="light" size="xs">
+                            SEQ
+                          </Badge>
+                        )}
+                      </Group>
                       <Text size="xs" c="dimmed">
                         {t("runsTable.concurrency", { value: run.concurrency })}
                       </Text>

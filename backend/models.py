@@ -29,10 +29,14 @@ class Run(Base):
     sub_test_case: Mapped[int] = mapped_column(Integer, default=1)
     auto_override_421: Mapped[bool] = mapped_column(Boolean, default=False)
     status_filters_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    run_type: Mapped[str] = mapped_column(String(32), default="standard")
 
     probes: Mapped[List["Probe"]] = relationship(back_populates="run", cascade="all, delete-orphan")
     aggregate: Mapped[Optional["Aggregate"]] = relationship(back_populates="run", uselist=False)
     logs: Mapped[List["RunnerLog"]] = relationship(back_populates="run", cascade="all, delete-orphan")
+    sequence_results: Mapped[List["SequenceGroupResult"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
 
     @property
     def status_filters(self) -> List[int]:
@@ -116,3 +120,25 @@ class RunnerLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     run: Mapped[Run] = relationship(back_populates="logs")
+
+
+class SequenceGroupResult(Base):
+    """Individual result within a sequence-group run, preserving request order and timing."""
+
+    __tablename__ = "sequence_group_results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"))
+    probe_id: Mapped[Optional[int]] = mapped_column(ForeignKey("probes.id", ondelete="SET NULL"), nullable=True)
+    sequence_index: Mapped[int] = mapped_column(Integer)
+    connection_reused: Mapped[bool] = mapped_column(Boolean, default=False)
+    dns_time_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    tcp_connect_time_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    tls_handshake_time_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    time_to_first_byte_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    total_time_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    request_type: Mapped[str] = mapped_column(String(32), default="injected")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    run: Mapped[Run] = relationship(back_populates="sequence_results")
+    probe: Mapped[Optional[Probe]] = relationship()

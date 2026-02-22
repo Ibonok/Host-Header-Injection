@@ -16,8 +16,62 @@ docker compose up -d --build
 - Frontend UI (served statically from the backend): `http://localhost:8080/ui`
 - Artifacts are stored in the `artifacts_data` volume; the DB in `db_data`.
 
-## Development with VibeCoding in Codex
+## Development with VibeCoding in Codex / Claude
 This project was built entirely with VibeCoding in Codex. Changes, refactors, and new features can continue seamlessly in the same environment.
+
+## Sequence Group — Single Connection
+
+The **Sequence Group** TestCase implements the same pattern as Burp Suite Repeater's
+*"Send group in sequence (single connection)"*. It is designed to test
+**Client-Side Desync**, **HTTP Request Smuggling**, and **Host-Header Injection**
+with minimal timing jitter.
+
+### How it works
+
+For every URL x FQDN pair the runner opens **one TCP connection** and sends
+two requests back-to-back:
+
+```
+┌──────────┐        ┌──────────┐
+│  Client   │───TCP──│  Server  │
+└──────────┘        └──────────┘
+     │                    │
+     │─── GET /path ─────>│  Request 1 (Normal — original Host)
+     │<── 200 OK ─────────│
+     │                    │
+     │─── GET /path ─────>│  Request 2 (Injected — FQDN as Host)
+     │<── 200 OK ─────────│
+     │                    │
+     ╳  connection close  ╳
+```
+
+- **Request 1 (Normal):** `GET <URL>` with the URL's own hostname as Host header.
+- **Request 2 (Injected):** `GET <URL>` with the FQDN as Host header.
+
+Both requests travel over the **same TCP connection**, so the server sees them
+as consecutive requests from the same client. This is critical for detecting
+desync vulnerabilities where the server's internal state carries over between
+requests.
+
+### Usage
+
+1. Select **Sequence Group** from the TestCase dropdown in the Run form.
+2. Upload a URLs file and a FQDNs file (same as Standard mode).
+3. Adjust timeout (up to 120s) and SSL verification if needed.
+4. Click **Send sequence**.
+
+The detail page shows results grouped by pair, with **Normal** and **Injected**
+badges. Rows where the status code or response size differs between normal and
+injected are highlighted. Click any row to open the Probe Drawer with the full
+raw request/response dump.
+
+### Technical details
+
+- Backend runner uses `httpx` with `follow_redirects=False` for precise control.
+- Each pair uses a fresh `httpx.Client` (single TCP connection, keep-alive).
+- Raw exchanges are saved to `artifacts/sequence/run_{id}/` for forensic review.
+- Runner logs are created in real time (visible in the Logs tab).
+- Up to 5 000 URL x FQDN combinations per run.
 
 ## Further development via Agents/Tasks
 Concrete working instructions for Codex are in `Agents.md` and `Tasks.md` (frontend/backend separately). Follow these to keep conventions, backlog priorities, and tests aligned.

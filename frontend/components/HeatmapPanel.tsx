@@ -8,6 +8,7 @@ import {
   Loader,
   RangeSlider,
   ScrollArea,
+  SegmentedControl,
   SimpleGrid,
   Stack,
   Switch,
@@ -372,6 +373,17 @@ export default function HeatmapPanel({
     return dedup;
   }, [filteredCells, activeUniqueOnly]);
 
+  const DISPLAY_LIMIT = 200;
+  const [displayLimit, setDisplayLimit] = useState(DISPLAY_LIMIT);
+
+  useEffect(() => {
+    setDisplayLimit(DISPLAY_LIMIT);
+  }, [displayCells.length]);
+
+  const visibleCells = useMemo(() => displayCells.slice(0, displayLimit), [displayCells, displayLimit]);
+  const hasMore = displayCells.length > displayLimit;
+
+  const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
 
   const sliderMax = useMemo(() => {
     if (sizeBounds.max === sizeBounds.min) {
@@ -415,11 +427,22 @@ export default function HeatmapPanel({
                 <Text size="sm" c="dimmed">
                   {t("heatmap.targetsCount", { count: headerInfo.targetsCount })}
                 </Text>
-                {headerInfo.onRefresh && (
-                  <Button size="xs" variant="light" onClick={headerInfo.onRefresh} disabled={headerInfo.loading}>
-                    {t("heatmap.refresh")}
-                  </Button>
-                )}
+                <Group gap="xs">
+                  <SegmentedControl
+                    size="xs"
+                    value={viewMode}
+                    onChange={(value) => setViewMode(value as "grid" | "table")}
+                    data={[
+                      { label: t("heatmap.viewGrid"), value: "grid" },
+                      { label: t("heatmap.viewTable"), value: "table" },
+                    ]}
+                  />
+                  {headerInfo.onRefresh && (
+                    <Button size="xs" variant="light" onClick={headerInfo.onRefresh} disabled={headerInfo.loading}>
+                      {t("heatmap.refresh")}
+                    </Button>
+                  )}
+                </Group>
               </Group>
             </>
           )
@@ -635,8 +658,174 @@ export default function HeatmapPanel({
                 />
               </Stack>
               {displayCells.length === 0 && <Text c="dimmed">{t("heatmap.noCells")}</Text>}
+              {viewMode === "table" ? (
+                <Table striped highlightOnHover>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>{t("heatmap.tableColumns.host")}</Table.Th>
+                      <Table.Th>{t("heatmap.tableColumns.status")}</Table.Th>
+                      <Table.Th>{t("heatmap.tableColumns.size")}</Table.Th>
+                      <Table.Th>{t("heatmap.tableColumns.attempt")}</Table.Th>
+                      <Table.Th>{t("heatmap.tableColumns.sni")}</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {visibleCells.map((cell) => (
+                      <Table.Tr
+                        key={`${cell.tested_host_header}-${cell.probe_id}`}
+                        style={{ cursor: "pointer" }}
+                        onClick={() => onSelectCell(cell)}
+                      >
+                        <Table.Td>
+                          <Text size="sm" fw={500}>{cell.tested_host_header}</Text>
+                          {cell.__path && <Text size="xs" c="dimmed">{cell.__path}</Text>}
+                        </Table.Td>
+                        <Table.Td>
+                          <Badge color={statusColor(cell.status_bucket)} variant="light" size="sm">
+                            {cell.http_status}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td><Text size="sm">{formatBytes(cell.bytes_total)}</Text></Table.Td>
+                        <Table.Td><Text size="sm">{cell.attempt}</Text></Table.Td>
+                        <Table.Td>
+                          {cell.sni_overridden && <Badge size="xs" color="violet">SNI</Badge>}
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              ) : (
+                <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
+                  {visibleCells.map((cell) => {
+                    const intensity = maxBytes ? Math.max(2, Math.round((cell.bytes_total / maxBytes) * 9)) : 2;
+                    const color = statusColor(cell.status_bucket);
+                    const bg = `var(--mantine-color-${color}-${intensity})`;
+                    return (
+                      <Tooltip
+                        key={`${cell.tested_host_header}-${cell.probe_id}`}
+                        label={t("heatmap.tooltip", {
+                          status: cell.http_status,
+                          attempt: cell.attempt,
+                          size: formatBytes(cell.bytes_total),
+                        })}
+                        withArrow
+                      >
+                        <Card
+                          onClick={() => onSelectCell(cell)}
+                          style={{ backgroundColor: bg, cursor: "pointer" }}
+                          radius="md"
+                          shadow="sm"
+                          p="md"
+                          withBorder
+                        >
+                          <Stack gap={4}>
+                            <Text fw={600}>{cell.tested_host_header}</Text>
+                            {cell.__path && (
+                              <Text size="xs" c="dimmed">
+                                {cell.__path}
+                              </Text>
+                            )}
+                            <Text size="sm">{cell.http_status}</Text>
+                            <Text size="sm" c="dimmed">
+                              {t("heatmap.rawLabel")}: {formatBytes(cell.bytes_total)}
+                            </Text>
+                            {cell.sni_overridden && (
+                              <Badge size="xs" color="violet">
+                                SNI OVERRIDE
+                              </Badge>
+                            )}
+                          </Stack>
+                        </Card>
+                      </Tooltip>
+                    );
+                  })}
+                </SimpleGrid>
+              )}
+              {hasMore && (
+                <Button variant="light" size="xs" onClick={() => setDisplayLimit((l) => l + DISPLAY_LIMIT)}>
+                  Show {Math.min(DISPLAY_LIMIT, displayCells.length - displayLimit)} more ({displayCells.length - displayLimit} remaining)
+                </Button>
+              )}
+            </Stack>
+          </SimpleGrid>
+        ) : (
+          <Stack gap="sm">
+            {statusCodeOptions.length > 0 && (
+              <Stack gap={4}>
+                <Group justify="space-between" align="center">
+                  <Text size="sm" fw={500}>
+                    {t("heatmap.httpCodes")}
+                  </Text>
+                  <Text
+                    component="button"
+                    size="xs"
+                    c="blue"
+                    style={{ background: "none", border: "none", cursor: "pointer" }}
+                    onClick={() =>
+                      setStatusCodesFilter((current) =>
+                        current.length === statusCodeOptions.length
+                          ? []
+                          : statusCodeOptions.map((option) => option.code),
+                      )
+                    }
+                  >
+                  </Text>
+                </Group>
+                <Chip.Group
+                  multiple
+                  value={statusCodesFilter.map(String)}
+                  onChange={(values) => setStatusCodesFilter(values.map(Number))}
+                >
+                  <Group gap="xs">
+                    {statusCodeOptions.map((option) => (
+                      <Chip key={option.code} value={String(option.code)}>
+                        {option.code} ({option.total})
+                      </Chip>
+                    ))}
+                  </Group>
+                </Chip.Group>
+              </Stack>
+            )}
+            {displayCells.length === 0 && <Text c="dimmed">{t("heatmap.noCells")}</Text>}
+            {viewMode === "table" ? (
+              <Table striped highlightOnHover>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>{t("heatmap.tableColumns.host")}</Table.Th>
+                    <Table.Th>{t("heatmap.tableColumns.status")}</Table.Th>
+                    <Table.Th>{t("heatmap.tableColumns.size")}</Table.Th>
+                    <Table.Th>{t("heatmap.tableColumns.attempt")}</Table.Th>
+                    <Table.Th>{t("heatmap.tableColumns.sni")}</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {visibleCells.map((cell) => (
+                    <Table.Tr
+                      key={`${cell.tested_host_header}-${cell.probe_id}`}
+                      style={{ cursor: "pointer" }}
+                      onClick={() => onSelectCell(cell)}
+                    >
+                      <Table.Td>
+                        <Text size="sm" fw={500}>{cell.tested_host_header}</Text>
+                        {cell.__path && <Text size="xs" c="dimmed">{cell.__path}</Text>}
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge color={statusColor(cell.status_bucket)} variant="light" size="sm">
+                          {cell.http_status}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td><Text size="sm">{formatBytes(cell.bytes_total)}</Text></Table.Td>
+                      <Table.Td><Text size="sm">{cell.attempt}</Text></Table.Td>
+                      <Table.Td>
+                        {cell.sni_overridden && <Badge size="xs" color="violet">SNI</Badge>}
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            ) : (
               <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-                {displayCells.map((cell) => {
+                {visibleCells.map((cell) => {
                   const intensity = maxBytes ? Math.max(2, Math.round((cell.bytes_total / maxBytes) * 9)) : 2;
                   const color = statusColor(cell.status_bucket);
                   const bg = `var(--mantine-color-${color}-${intensity})`;
@@ -680,92 +869,12 @@ export default function HeatmapPanel({
                   );
                 })}
               </SimpleGrid>
-            </Stack>
-          </SimpleGrid>
-        ) : (
-          <Stack gap="sm">
-            {statusCodeOptions.length > 0 && (
-              <Stack gap={4}>
-                <Group justify="space-between" align="center">
-                  <Text size="sm" fw={500}>
-                    {t("heatmap.httpCodes")}
-                  </Text>
-                  <Text
-                    component="button"
-                    size="xs"
-                    c="blue"
-                    style={{ background: "none", border: "none", cursor: "pointer" }}
-                    onClick={() =>
-                      setStatusCodesFilter((current) =>
-                        current.length === statusCodeOptions.length
-                          ? []
-                          : statusCodeOptions.map((option) => option.code),
-                      )
-                    }
-                  >
-                  </Text>
-                </Group>
-                <Chip.Group
-                  multiple
-                  value={statusCodesFilter.map(String)}
-                  onChange={(values) => setStatusCodesFilter(values.map(Number))}
-                >
-                  <Group gap="xs">
-                    {statusCodeOptions.map((option) => (
-                      <Chip key={option.code} value={String(option.code)}>
-                        {option.code} ({option.total})
-                      </Chip>
-                    ))}
-                  </Group>
-                </Chip.Group>
-              </Stack>
             )}
-            {displayCells.length === 0 && <Text c="dimmed">{t("heatmap.noCells")}</Text>}
-            <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-              {displayCells.map((cell) => {
-                const intensity = maxBytes ? Math.max(2, Math.round((cell.bytes_total / maxBytes) * 9)) : 2;
-                const color = statusColor(cell.status_bucket);
-                const bg = `var(--mantine-color-${color}-${intensity})`;
-                return (
-                  <Tooltip
-                    key={`${cell.tested_host_header}-${cell.probe_id}`}
-                    label={t("heatmap.tooltip", {
-                      status: cell.http_status,
-                      attempt: cell.attempt,
-                      size: formatBytes(cell.bytes_total),
-                    })}
-                    withArrow
-                  >
-                    <Card
-                      onClick={() => onSelectCell(cell)}
-                      style={{ backgroundColor: bg, cursor: "pointer" }}
-                      radius="md"
-                      shadow="sm"
-                      p="md"
-                      withBorder
-                    >
-                      <Stack gap={4}>
-                        <Text fw={600}>{cell.tested_host_header}</Text>
-                        {cell.__path && (
-                          <Text size="xs" c="dimmed">
-                            {cell.__path}
-                          </Text>
-                        )}
-                        <Text size="sm">{cell.http_status}</Text>
-                        <Text size="sm" c="dimmed">
-                          {t("heatmap.rawLabel")}: {formatBytes(cell.bytes_total)}
-                        </Text>
-                        {cell.sni_overridden && (
-                          <Badge size="xs" color="violet">
-                            SNI OVERRIDE
-                          </Badge>
-                        )}
-                      </Stack>
-                    </Card>
-                  </Tooltip>
-                );
-              })}
-            </SimpleGrid>
+            {hasMore && (
+              <Button variant="light" size="xs" onClick={() => setDisplayLimit((l) => l + DISPLAY_LIMIT)}>
+                Show {Math.min(DISPLAY_LIMIT, displayCells.length - displayLimit)} more ({displayCells.length - displayLimit} remaining)
+              </Button>
+            )}
           </Stack>
         )}
       </Stack>

@@ -12,7 +12,8 @@ from typing import Dict, List, Optional, Tuple
 if __package__ in (None, ""):
     sys.path.append(str(Path(__file__).resolve().parents[2]))
 
-from sqlalchemy import select
+from sqlalchemy import case, func, select
+from sqlalchemy.orm import Session
 
 from backend.db import session_scope
 from backend.models import Aggregate, Probe
@@ -122,12 +123,11 @@ def compute_421_summary(probes: List[Probe]) -> Dict[str, int]:
         if not probe.auto_421_override:
             continue
         total_overrides += 1
-        retries += 1  # es wurde ein Override-Versuch ausgelöst
-        # Wir werten den Override als „erfolgreich ausgeführt“, unabhängig vom finalen HTTP-Status,
-        # weil der Runner im gleichen Attempt keine erste 421-Response persistiert.
-        successful += 1
-        # Optional: wenn du Status-Erfolg sehen willst, ersetze obige Zeile durch eine Statusprüfung
-        # und erhöhe andernfalls `failed`.
+        retries += 1
+        if probe.http_status and 200 <= probe.http_status < 400:
+            successful += 1
+        else:
+            failed += 1
     return {
         "total_421": total_overrides,
         "retries": retries,
@@ -136,13 +136,81 @@ def compute_421_summary(probes: List[Probe]) -> Dict[str, int]:
     }
 
 
+def _compute_status_distribution_sql(session: Session, run_id: int) -> Dict[str, int]:
+    """Compute status distribution via SQL aggregation instead of loading all probes."""
+    row = session.execute(
+        select(
+            func.sum(case((Probe.http_status.between(200, 299), 1), else_=0)).label("success"),
+            func.sum(case((Probe.http_status.between(300, 399), 1), else_=0)).label("redirect"),
+            func.sum(case((Probe.http_status.between(400, 499), 1), else_=0)).label("client_error"),
+            func.sum(case((Probe.http_status.between(500, 599), 1), else_=0)).label("server_error"),
+            func.sum(case((~Probe.http_status.between(200, 599), 1), else_=0)).label("other"),
+        ).where(Probe.run_id == run_id)
+    ).one()
+    return {
+        "success": row.success or 0,
+        "redirect": row.redirect or 0,
+        "client_error": row.client_error or 0,
+        "server_error": row.server_error or 0,
+        "other": row.other or 0,
+    }
+
+
+def _compute_latency_stats_sql(session: Session, run_id: int) -> Dict[str, float]:
+    """Compute latency stats via SQL aggregation."""
+    row = session.execute(
+        select(
+            func.avg(Probe.response_time_ms).label("avg_ms"),
+            func.min(Probe.response_time_ms).label("min_ms"),
+            func.max(Probe.response_time_ms).label("max_ms"),
+        ).where(
+            Probe.run_id == run_id,
+            Probe.response_time_ms.isnot(None),
+            Probe.response_time_ms > 0,
+        )
+    ).one()
+    return {
+        "avg_ms": float(row.avg_ms or 0),
+        "min_ms": float(row.min_ms or 0),
+        "max_ms": float(row.max_ms or 0),
+    }
+
+
+def _compute_421_summary_sql(session: Session, run_id: int) -> Dict[str, int]:
+    """Compute 421 summary via SQL aggregation."""
+    row = session.execute(
+        select(
+            func.count().label("total"),
+            func.sum(case(
+                (Probe.http_status.between(200, 399), 1), else_=0,
+            )).label("successful"),
+        ).where(
+            Probe.run_id == run_id,
+            Probe.auto_421_override == True,  # noqa: E712
+        )
+    ).one()
+    total = row.total or 0
+    successful = row.successful or 0
+    return {
+        "total_421": total,
+        "retries": total,
+        "successful_retries": successful,
+        "failed_retries": total - successful,
+    }
+
+
 def persist_aggregates(session: Session, run_id: int) -> Aggregate:
-    probes = session.execute(select(Probe).where(Probe.run_id == run_id)).scalars().all()
+    # Server-side SQL aggregation for simple stats (avoids loading all probes)
+    status_dist = _compute_status_distribution_sql(session, run_id)
+    latency_stats = _compute_latency_stats_sql(session, run_id)
+    summary_421 = _compute_421_summary_sql(session, run_id)
+
+    # Matrix and diffs still require probe-level data
+    probes = session.execute(
+        select(Probe).where(Probe.run_id == run_id)
+    ).scalars().all()
     matrix, _, _ = compute_matrix(probes)
-    status_dist = compute_status_distribution(probes)
-    latency_stats = compute_latency_stats(probes)
     diffs = compute_diffs(probes)
-    summary_421 = compute_421_summary(probes)
 
     aggregate = session.execute(select(Aggregate).where(Aggregate.run_id == run_id)).scalar_one_or_none()
     payload = {

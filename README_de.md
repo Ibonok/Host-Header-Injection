@@ -14,11 +14,65 @@ docker compose up -d --build
 - Frontend-UI (statisch aus dem Backend bereitgestellt): `http://localhost:8080/ui`
 - Artefakte liegen im Volume `artifacts_data`; die DB in `db_data`.
 
-## Entwicklung mit VibeCoding in Codex
+## Entwicklung mit VibeCoding in Codex / Claude
 Dieses Projekt wurde vollständig mit VibeCoding in Codex erstellt. Änderungen, Refactorings oder neue Features können nahtlos in derselben Umgebung fortgesetzt werden.
 
-## Weiterentwicklung über Agents/Tasks
-Die konkreten Arbeitsanweisungen für Codex finden sich in `Agents.md` und `Tasks.md` (Frontend/Backend jeweils separat). Folge diesen Dateien, um konsistente Konventionen, Backlog-Prioritäten und Tests beizubehalten.
+## Sequence Group — Single Connection
+
+Der **Sequence Group** TestCase implementiert dasselbe Muster wie Burp Suite Repeaters
+*"Send group in sequence (single connection)"*. Er dient zum Testen von
+**Client-Side Desync**, **HTTP Request Smuggling** und **Host-Header Injection**
+bei minimalem Timing-Jitter.
+
+### Funktionsweise
+
+Fuer jedes URL x FQDN Paar oeffnet der Runner **eine TCP-Verbindung** und sendet
+zwei Requests hintereinander:
+
+```
+┌──────────┐        ┌──────────┐
+│  Client   │───TCP──│  Server  │
+└──────────┘        └──────────┘
+     │                    │
+     │─── GET /path ─────>│  Request 1 (Normal — Original-Host)
+     │<── 200 OK ─────────│
+     │                    │
+     │─── GET /path ─────>│  Request 2 (Injected — FQDN als Host)
+     │<── 200 OK ─────────│
+     │                    │
+     ╳  Verbindung Ende   ╳
+```
+
+- **Request 1 (Normal):** `GET <URL>` mit dem originalen Hostnamen der URL.
+- **Request 2 (Injected):** `GET <URL>` mit dem FQDN als Host-Header.
+
+Beide Requests laufen ueber **dieselbe TCP-Verbindung**, sodass der Server sie
+als aufeinanderfolgende Requests desselben Clients sieht. Das ist entscheidend
+fuer die Erkennung von Desync-Schwachstellen, bei denen der interne Serverzustand
+zwischen Requests bestehen bleibt.
+
+### Benutzung
+
+1. **Sequence Group** im TestCase-Dropdown des Run-Formulars auswaehlen.
+2. URLs-Datei und FQDNs-Datei hochladen (wie im Standard-Modus).
+3. Timeout (bis 120s) und SSL-Verifizierung bei Bedarf anpassen.
+4. **Sequenz senden** klicken.
+
+Die Detail-Seite zeigt Ergebnisse paarweise gruppiert, mit **Normal**- und **Injected**-
+Badges. Zeilen, bei denen sich Statuscode oder Antwortgroesse zwischen Normal und
+Injected unterscheiden, werden hervorgehoben. Klick auf eine Zeile oeffnet den
+Probe-Drawer mit dem vollstaendigen Request/Response-Dump.
+
+### Technische Details
+
+- Backend-Runner nutzt `httpx` mit `follow_redirects=False` fuer praezise Kontrolle.
+- Jedes Paar verwendet einen eigenen `httpx.Client` (eine TCP-Verbindung, Keep-Alive).
+- Raw-Exchanges werden unter `artifacts/sequence/run_{id}/` fuer forensische Analyse gespeichert.
+- Runner-Logs werden in Echtzeit erstellt (sichtbar im Logs-Tab).
+- Bis zu 5.000 URL x FQDN Kombinationen pro Run.
+
+## Weiterentwicklung ueber Agents/Tasks
+Die konkreten Arbeitsanweisungen fuer Codex finden sich in `Agents.md` und `Tasks.md` (Frontend/Backend jeweils separat). Folge diesen Dateien, um konsistente Konventionen, Backlog-Prioritaeten und Tests beizubehalten.
 
 ## 🔍 DNS- & Subdomain-Checks mit ProjectDiscovery
 

@@ -1,13 +1,17 @@
+import { useState } from "react";
 import { Alert, Container, Grid, Stack, Title } from "@mantine/core";
 import RunForm from "../components/RunForm";
 import RunsTable from "../components/RunsTable";
+import SequenceGroupResultsPanel from "../components/SequenceGroupResultsPanel";
 import { useAsyncData } from "../lib/hooks";
 import { listRuns } from "../lib/api";
 import { useTranslations } from "../lib/i18n";
+import type { SequenceGroupResult } from "../lib/types";
 
 export default function IndexPage() {
   const { data: runs, loading, error, refresh } = useAsyncData(listRuns, [], { autoRefreshMs: 5000 });
   const { t } = useTranslations();
+  const [sequenceResult, setSequenceResult] = useState<SequenceGroupResult | null>(null);
 
   return (
     <Container size="xl">
@@ -22,11 +26,17 @@ export default function IndexPage() {
         )}
         <Grid>
           <Grid.Col span={{ base: 12, md: 5 }}>
-            <RunForm
-              onCreated={() => {
-                refresh();
-              }}
-            />
+            <Stack gap="md">
+              <RunForm
+                onCreated={() => {
+                  refresh();
+                }}
+                onSequenceResult={(result) => setSequenceResult(result)}
+              />
+              {sequenceResult && (
+                <SequenceGroupResultsPanel result={sequenceResult} loading={false} />
+              )}
+            </Stack>
           </Grid.Col>
           <Grid.Col span={{ base: 12, md: 7 }}>
             <RunsTable runs={runs || []} loading={loading} onRefresh={refresh} />

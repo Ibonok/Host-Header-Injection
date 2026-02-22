@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import List
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select
@@ -14,7 +15,8 @@ from ..config import get_settings
 from ..db import SessionLocal, get_session
 from ..models import RunnerLog, Run
 from ..runners import AuthorizedTestRunner
-from ..schemas import RunnerLogRead, RunRead
+from ..runners.sequence_runner import SequenceGroupRunner
+from ..schemas import RunnerLogRead, RunRead, SequenceGroupCreate, SequenceGroupRead, SequenceTimingRead
 settings = get_settings()
 
 
@@ -36,8 +38,16 @@ def _store_source_files(
 
 
 def _append_log(session: Session, run_id: int, message: str, level: str = "info") -> None:
+    """Add a log entry to the session without committing."""
     session.add(RunnerLog(run_id=run_id, message=message, level=level))
-    session.commit()
+
+
+def _flush_logs(session: Session) -> None:
+    """Commit any pending log entries."""
+    try:
+        session.commit()
+    except Exception:  # noqa: BLE001
+        session.rollback()
 
 
 def _run_runner_background(
@@ -72,6 +82,7 @@ def _run_runner_background(
                 f" x {len(directories)} Verzeichnisse, Concurrency {run.concurrency}, DNS {dns_mode}, Blacklist {'an' if apply_blacklist else 'aus'}{filters_note})"
             ),
         )
+        _flush_logs(session)
         runner = AuthorizedTestRunner(
             session=session,
             attempt=attempt,
@@ -80,6 +91,7 @@ def _run_runner_background(
             auto_override_421=auto_override_421,
             apply_blacklist=apply_blacklist,
             logger=lambda msg: _append_log(session, run_id, msg),
+            status_filters=status_filters,
         )
         runner.run(
             run,
@@ -89,6 +101,7 @@ def _run_runner_background(
             skip_dns_resolution=skip_dns_resolution,
             preserve_directory_slash=sub_test_case == 2,
         )
+        _flush_logs(session)
         session.refresh(run)
         if run.status == "running":
             run.status = "success"
@@ -96,6 +109,7 @@ def _run_runner_background(
             run.status = "stopped"
         session.commit()
         _append_log(session, run_id, "Runner abgeschlossen")
+        _flush_logs(session)
         persist_aggregates(session, run_id)
         session.commit()
     except Exception as exc:  # noqa: BLE001
@@ -106,6 +120,7 @@ def _run_runner_background(
             session.commit()
         try:
             _append_log(session, run_id, f"Runner Fehler: {exc}", level="error")
+            _flush_logs(session)
         except Exception:
             session.rollback()
     finally:
@@ -216,6 +231,7 @@ async def create_run_from_lists(
             f"Concurrency {concurrency}, DNS {dns_mode}{filters_note})"
         ),
     )
+    _flush_logs(session)
     background_tasks.add_task(
         _run_runner_background,
         run.id,
@@ -244,6 +260,7 @@ def stop_run(run_id: int, session: Session = Depends(get_session)) -> RunRead:
     run.status = "stopping"
     session.commit()
     _append_log(session, run.id, "Stop angefordert", level="warning")
+    _flush_logs(session)
     session.refresh(run)
     return run
 
@@ -272,3 +289,87 @@ def list_runner_logs(
         .all()
     )
     return logs
+
+
+@router.post("/sequence-group", response_model=SequenceGroupRead)
+def create_sequence_group(
+    payload: SequenceGroupCreate,
+    session: Session = Depends(get_session),
+) -> SequenceGroupRead:
+    """Send a group of requests sequentially over a single TCP connection.
+
+    Analogous to Burp Suite Repeater's 'Send group in sequence (single connection)'.
+    All requests must target the same host. Useful for timing-sensitive tests,
+    race conditions, and client-side desync vulnerability detection.
+    """
+    # Validate all requests target the same host
+    hosts = {urlparse(str(r.url)).hostname for r in payload.requests}
+    if len(hosts) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Alle Requests in einer Sequence Group müssen denselben Host haben. Gefunden: {hosts}",
+        )
+
+    run = Run(
+        name=payload.name,
+        description=payload.description,
+        run_type="sequence_group",
+        total_combinations=len(payload.requests),
+        processed_combinations=0,
+        status="running",
+    )
+    session.add(run)
+    session.commit()
+    session.refresh(run)
+
+    def _log(msg: str) -> None:
+        _append_log(session, run.id, msg)
+        _flush_logs(session)
+
+    _log(
+        f"Sequence Group gestartet: {len(payload.requests)} Paare, "
+        f"Timeout {payload.timeout_seconds}s, SSL-Verify {'an' if payload.verify_ssl else 'aus'}"
+    )
+
+    runner = SequenceGroupRunner(
+        db_session=session,
+        timeout=payload.timeout_seconds,
+        verify_ssl=payload.verify_ssl,
+        logger=_log,
+    )
+
+    try:
+        results = runner.execute(run, payload.requests)
+        run.status = "success"
+        run.processed_combinations = len(payload.requests)
+        session.commit()
+        _log(f"Sequence Group abgeschlossen: {len(results)} Requests ausgefuehrt")
+    except Exception as exc:  # noqa: BLE001
+        run.status = "failed"
+        session.commit()
+        _log(f"Sequence Group Fehler: {exc}")
+        raise HTTPException(status_code=500, detail=f"Sequence Group fehlgeschlagen: {exc}")
+
+    timing_results = [
+        SequenceTimingRead(
+            sequence_index=r.sequence_index,
+            probe_id=r.probe_id,
+            connection_reused=r.connection_reused,
+            total_time_ms=r.total_time_ms,
+            http_status=r.http_status,
+            status_text=r.status_text,
+            bytes_total=r.bytes_total,
+            error=r.error,
+            request_type=r.request_type,
+        )
+        for r in results
+    ]
+
+    total_elapsed = sum(r.total_time_ms or 0 for r in results)
+    return SequenceGroupRead(
+        run_id=run.id,
+        run_name=run.name,
+        total_requests=len(results),
+        results=timing_results,
+        total_elapsed_ms=total_elapsed,
+    )

@@ -30,4 +30,48 @@
 - [ ] Provide `Makefile` targets (`make docker-build`, `make runner RUN_ID=...`).
 - [ ] Document common runner troubleshooting (timeouts, TLS issues) in README.
 
+## 6) Sequence Group — Single Connection
+
+Implements Burp Suite Repeater's "Send group in sequence (single connection)" pattern.
+Reference implementation: `SendingWebRequestsThroughSameConnection/main.py`.
+
+### Completed
+- [x] New `SequenceGroupRunner` using `httpx` (replaced `aiohttp`).
+- [x] Two-request pattern per URL x FQDN pair over a single TCP connection:
+  1. Request 1 (normal): `GET <URL>` with original Host header.
+  2. Request 2 (injected): `GET <URL>` with FQDN as Host header.
+- [x] Full request/response dump saved to `artifacts/sequence/run_{id}/{index}_{type}.txt`.
+- [x] `request_type` field added to `SequenceGroupResult` model (`"normal"` / `"injected"`).
+- [x] DB migration in `main.py` for `request_type` column on existing databases.
+- [x] `SequenceTimingRead` schema extended with `request_type`.
+- [x] `POST /api/runner/sequence-group` now creates `RunnerLog` entries (start, per-pair progress, completion/error).
+- [x] Logger callback passed to `SequenceGroupRunner` for real-time log persistence.
+- [x] `GET /api/runs/{run_id}/sequence-results` returns real timing data with `request_type`.
+- [x] `SequenceGroupCreate.timeout_seconds` max raised from 30 to 120.
+- [x] `SequenceGroupCreate.requests` max raised from 50 to 5000.
+- [x] `httpx` added to `pyproject.toml` dependencies.
+
+### Files changed
+| File | Change |
+|---|---|
+| `pyproject.toml` | Added `httpx` dependency |
+| `models.py` | `request_type` column on `SequenceGroupResult` |
+| `main.py` | Migration for `request_type` column |
+| `schemas.py` | `request_type` in `SequenceTimingRead`; `timeout_seconds` max 120; `requests` max 5000 |
+| `runners/sequence_runner.py` | Complete rewrite: httpx, two-request pattern, raw response files, logging |
+| `routers/runner.py` | Logging in `create_sequence_group`, logger callback to runner |
+| `routers/runs.py` | `request_type` in `get_sequence_results` endpoint |
+
+### API endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/runner/sequence-group` | Create and execute a sequence group run |
+| `GET` | `/api/runs/{run_id}/sequence-results` | Fetch sequence timing results with probe data |
+
+### Open
+- [ ] Add HTTP/2 support (httpx `http2=True` + `h2` dependency).
+- [ ] Add `separate-connections` and `parallel` modes (reference implementation supports all three).
+- [ ] Integration test for sequence group creation + result retrieval.
+
 > **Testing/Debugging requirement:** Always verify fixes inside Docker (`docker compose build`, `docker compose up -d`, `docker compose logs app`).

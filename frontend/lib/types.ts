@@ -13,6 +13,7 @@ export type Run = {
   sub_test_case?: number;
   auto_override_421?: boolean;
   status_filters?: number[];
+  run_type?: string;
 };
 
 export type RunnerLog = {
@@ -70,4 +71,34 @@ export type Probe = {
   correlation_id?: string | null;
   reason?: string | null;
   created_at: string;
+};
+
+export type SequenceRequestDef = {
+  url: string;
+  host_header: string;
+  method: string;
+};
+
+export type SequenceTiming = {
+  sequence_index: number;
+  probe_id?: number | null;
+  connection_reused: boolean;
+  dns_time_ms?: number | null;
+  tcp_connect_time_ms?: number | null;
+  tls_handshake_time_ms?: number | null;
+  time_to_first_byte_ms?: number | null;
+  total_time_ms?: number | null;
+  http_status?: number | null;
+  status_text?: string | null;
+  bytes_total: number;
+  error?: string | null;
+  request_type: "normal" | "injected";
+};
+
+export type SequenceGroupResult = {
+  run_id: number;
+  run_name: string;
+  total_requests: number;
+  results: SequenceTiming[];
+  total_elapsed_ms: number;
 };
