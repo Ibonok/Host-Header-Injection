@@ -50,6 +50,8 @@ Reference implementation: `SendingWebRequestsThroughSameConnection/main.py`.
 - [x] `SequenceGroupCreate.timeout_seconds` max raised from 30 to 120.
 - [x] `SequenceGroupCreate.requests` max raised from 50 to 5000.
 - [x] `httpx` added to `pyproject.toml` dependencies.
+- [x] `SequenceTimingRead` extended with `target_url` and `tested_host_header` fields.
+- [x] Both `POST /api/runner/sequence-group` and `GET /api/runs/{run_id}/sequence-results` now return `target_url` and `tested_host_header` per timing entry (sourced from Probe / runner result).
 
 ### Files changed
 | File | Change |
@@ -57,10 +59,10 @@ Reference implementation: `SendingWebRequestsThroughSameConnection/main.py`.
 | `pyproject.toml` | Added `httpx` dependency |
 | `models.py` | `request_type` column on `SequenceGroupResult` |
 | `main.py` | Migration for `request_type` column |
-| `schemas.py` | `request_type` in `SequenceTimingRead`; `timeout_seconds` max 120; `requests` max 5000 |
+| `schemas.py` | `request_type`, `target_url`, `tested_host_header` in `SequenceTimingRead`; `timeout_seconds` max 120; `requests` max 5000 |
 | `runners/sequence_runner.py` | Complete rewrite: httpx, two-request pattern, raw response files, logging |
-| `routers/runner.py` | Logging in `create_sequence_group`, logger callback to runner |
-| `routers/runs.py` | `request_type` in `get_sequence_results` endpoint |
+| `routers/runner.py` | Logging in `create_sequence_group`, logger callback to runner; populates `target_url`/`tested_host_header` |
+| `routers/runs.py` | `request_type`, `target_url`, `tested_host_header` in `get_sequence_results` endpoint |
 
 ### API endpoints
 

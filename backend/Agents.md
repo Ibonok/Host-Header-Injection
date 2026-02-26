@@ -9,7 +9,7 @@ backend/
 ├── config.py / config.yaml (paths, limits)
 ├── main.py (FastAPI setup, routers)
 ├── db.py (SQLAlchemy engine/session)
-├── models.py (Run, Probe, Aggregate, RunnerLog)
+├── models.py (Run, Probe, Aggregate, RunnerLog, SequenceGroupResult)
 ├── routers/
 │   ├── runs.py (CRUD, artifact cleanup)
 │   ├── runner.py (file upload, runner execution, logs)
@@ -38,6 +38,7 @@ backend/
 - Runner logs go into `runner_logs` table for UI consumption.
 - Cloudflare IP ban list stored in `cloudflare-ban.txt` (skip URL before HTTP call).
 - Matrix endpoint (`GET /api/runs/{id}/aggregates/matrix`) can be filtered via `unique_size_only=true/false` but always returns the full per-target status/bucket totals so the UI can show accurate counts regardless of deduplication.
+- Sequence Group endpoints (`POST /api/runner/sequence-group`, `GET /api/runs/{id}/sequence-results`) return `SequenceTimingRead` objects with `target_url` and `tested_host_header` per entry so the frontend can display which URL was tested and which Host header was used (original vs. injected).
 - Directory list handling: `_normalize_directory` now preserves leading slashes. A line `test` wird zu `/test`, eine Zeile `/test` zu `//test`; leere/blanke Zeilen werden zu `/`.
 - Run creation enforces DNS resolution unless the job is SubTestCase 2 *and* no FQDN list is provided; that is the sole scenario where `skip_dns_resolution` is enabled (directory expansion over raw URLs). All other runs still resolve DNS, switching only between "alle" vs. "erster A/AAAA" records based on `resolve_all_dns_records`.
 - `auto_override_421` (exposed on run creation and stored per probe) automatically retries HTTPS combinations that return HTTP 421 with the tested host as SNI. These overrides are logged (`+ auto-421`) and propagated to the heatmap so the frontend can surface an indicator.*

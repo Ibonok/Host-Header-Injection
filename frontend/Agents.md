@@ -9,6 +9,7 @@ This Next.js Pages app (React 19 + Mantine 8) is the UI for the Host Header Inje
 - DNS controls: "Alle DNS A/AAAA" (default **off**) determines how many resolved records we probe per host; the label carries a `*` tooltip (“Test all load balancer / reverse proxy IPs”). The Auto 421 SNI override switch retriggers misdirected (421) responses with the tested host as SNI (values are sent via the run creation API).
 - Blacklist handling: new "Apply blacklist" switch (default **on**) lets users disable IP blacklist/Cloudflare skipping for a run.
 - Detailed run view featuring: summary stats, new target-selection table beside the heatmap, HTTP bucket + per-code filters, RAW-size range slider, probe cards with SNI flags, probe drawer (auto-load raw), and live runner logs with filters. (Screenshot feature ist entfernt.)
+- Sequence Group results panel with pair-grouped table showing URL, Host Header, status, time, connection, size, and error columns. Heatmap-style HTTP code batch chips (Chip.Group) above the table allow filtering pairs by status code.
 - Directory tabs (DirectoryPathsCard) that open per-base heatmaps with path tables, HTTP-code chips and raw-size filters, using Tabler icons for controls.
 - Static export served from FastAPI (`/ui`). Always validate through Docker (`docker compose build && docker compose up -d`) to match production.
 

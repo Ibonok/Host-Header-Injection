@@ -59,15 +59,27 @@ TestCase "Sequence Group" in the RunForm dropdown, modelled after Burp Suite Rep
 - [x] i18n keys added (EN + DE) for type column, pair labels, normal/injected badges.
 - [x] Heatmap Grid/Table toggle (SegmentedControl) for standard runs.
 - [x] Runs table shows "SEQ" badge for `run_type === "sequence_group"`.
+- [x] URL and Host Header columns added to `SequenceGroupResultsPanel` table.
+  - `target_url` and `tested_host_header` fields on `SequenceTiming` type.
+  - Host Header is bold for injected requests to visually distinguish manipulated headers.
+- [x] Status code batch chips (Heatmap-style `Chip.Group`) above the results table.
+  - Computed from all results; each chip shows HTTP code + count (e.g. `200 (12)`).
+  - Colored by bucket (green/yellow/orange/red) via `bucketFromStatus` + `statusColor`.
+  - Clicking chips filters pairs: pair is shown if any request matches selected codes.
+  - "Reset" button clears filter.
+- [x] i18n keys for `columns.url`, `columns.hostHeader`, `httpCodes` (EN + DE).
+- [x] Table wrapped in `ScrollArea` for horizontal scrollability with additional columns.
 
 ### Files changed
 | File | Change |
 |---|---|
-| `lib/types.ts` | `request_type` on `SequenceTiming` |
+| `lib/types.ts` | `request_type`, `target_url`, `tested_host_header` on `SequenceTiming` |
 | `lib/api.ts` | `fetchSequenceResults()`, `createSequenceGroup()` |
-| `lib/i18n.tsx` | Sequence Group keys (EN + DE), heatmap view toggle keys |
+| `lib/i18n.tsx` | Sequence Group keys (EN + DE), heatmap view toggle keys, URL/Host Header/httpCodes keys |
+| `lib/heatmap.ts` | `bucketFromStatus` reused for status code chip coloring |
+| `lib/format.ts` | `statusColor` reused for chip color mapping |
 | `components/RunForm.tsx` | TestCase dropdown, sequence mode fields, timeout slider |
-| `components/SequenceGroupResultsPanel.tsx` | Pair grouping, type column, diff highlighting |
+| `components/SequenceGroupResultsPanel.tsx` | Pair grouping, type column, diff highlighting, URL/Host Header columns, status code batch chips with filtering |
 | `components/HeatmapPanel.tsx` | Grid/Table toggle, table view rendering |
 | `components/RunsTable.tsx` | "SEQ" badge for sequence group runs |
 | `pages/index.tsx` | `onSequenceResult` callback, inline result display |

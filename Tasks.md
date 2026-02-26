@@ -35,3 +35,20 @@ Key changes:
 - Timeout increased to max 120s.
 
 See `backend/Tasks.md` and `frontend/Tasks.md` for implementation details.
+
+### Sequence Group — URL Columns & Status Code Batches
+
+The Sequence Group results table has been enhanced:
+
+- **URL + Host Header columns** added to the results table. The API now returns
+  `target_url` and `tested_host_header` per timing entry. Host Header is rendered
+  bold for injected requests to visually distinguish manipulated headers.
+- **Status code batch chips** (Heatmap-style) above the table. Each chip shows an
+  HTTP code with its count (e.g. `200 (12)`, `403 (4)`), colored by bucket
+  (green/yellow/orange/red). Clicking chips filters pairs by status code;
+  a "Reset" button clears the filter.
+- Table wrapped in `ScrollArea` for horizontal scrollability.
+
+Backend: `SequenceTimingRead` schema extended with `target_url` and `tested_host_header`.
+Frontend: `SequenceGroupResultsPanel` uses `Chip.Group` + `bucketFromStatus`/`statusColor`
+from the existing heatmap utilities.
