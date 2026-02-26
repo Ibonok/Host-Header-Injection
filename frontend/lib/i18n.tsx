@@ -247,6 +247,8 @@ const translations: Record<Language, TranslationValue> = {
       columns: {
         index: "#",
         type: "Type",
+        url: "URL",
+        hostHeader: "Host Header",
         status: "Status",
         time: "Time (ms)",
         connection: "Connection",
@@ -258,6 +260,7 @@ const translations: Record<Language, TranslationValue> = {
       requestNormal: "Normal",
       requestInjected: "Injected",
       pairLabel: "Pair {{index}}",
+      httpCodes: "HTTP codes",
       tabs: {
         standard: "Standard Run",
         sequence: "Sequence Group",
@@ -498,6 +501,8 @@ const translations: Record<Language, TranslationValue> = {
       columns: {
         index: "#",
         type: "Typ",
+        url: "URL",
+        hostHeader: "Host Header",
         status: "Status",
         time: "Zeit (ms)",
         connection: "Verbindung",
@@ -509,6 +514,7 @@ const translations: Record<Language, TranslationValue> = {
       requestNormal: "Normal",
       requestInjected: "Injected",
       pairLabel: "Paar {{index}}",
+      httpCodes: "HTTP-Codes",
       tabs: {
         standard: "Standard Run",
         sequence: "Sequence Group",

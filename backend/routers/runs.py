@@ -102,6 +102,8 @@ def get_sequence_results(run_id: int, session: Session = Depends(get_session)) -
                 bytes_total=probe.bytes_total if probe else 0,
                 error=probe.reason if probe else None,
                 request_type=sgr.request_type,
+                target_url=str(probe.target_url) if probe else None,
+                tested_host_header=probe.tested_host_header if probe else None,
             )
         )
 

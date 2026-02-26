@@ -172,6 +172,8 @@ class SequenceTimingRead(BaseModel):
     bytes_total: int = 0
     error: Optional[str] = None
     request_type: str = "injected"
+    target_url: Optional[str] = None
+    tested_host_header: Optional[str] = None
 
 
 class SequenceGroupRead(BaseModel):

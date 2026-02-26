@@ -361,6 +361,8 @@ def create_sequence_group(
             bytes_total=r.bytes_total,
             error=r.error,
             request_type=r.request_type,
+            target_url=r.url,
+            tested_host_header=r.host_header,
         )
         for r in results
     ]

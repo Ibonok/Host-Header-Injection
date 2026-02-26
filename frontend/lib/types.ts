@@ -93,6 +93,8 @@ export type SequenceTiming = {
   bytes_total: number;
   error?: string | null;
   request_type: "normal" | "injected";
+  target_url?: string | null;
+  tested_host_header?: string | null;
 };
 
 export type SequenceGroupResult = {
